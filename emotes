@@ -1,0 +1,138 @@
+-- Script MM2: Botão de Emotes Permanente no Slot 2 (CORRIGIDO)
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+local menuAberto = false
+
+-- Guarda as Tools que já tiveram o Equipped conectado (referência, não atributo!)
+-- Usamos weak table pra não vazar memória
+local boundTools = setmetatable({}, {__mode = "k"})
+
+-- Simula o clique da tecla T
+local function alternarMenuT()
+    VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.T, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.T, false, game)
+end
+
+-- Conecta o evento Equipped numa Tool (uma vez por instância)
+local function setupTool(tool)
+    if boundTools[tool] then return end
+    boundTools[tool] = true
+
+    tool.RequiresHandle = false
+    tool.CanBeDropped    = false
+
+    tool.Equipped:Connect(function()
+        menuAberto = not menuAberto
+        alternarMenuT()
+
+        task.defer(function()
+            local character = player.Character
+            if character then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid:UnequipTools()
+                end
+            end
+        end)
+    end)
+end
+
+-- Cria uma Tool nova já configurada
+local function createEmotesTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Emotes"
+    tool.RequiresHandle = false
+    tool.CanBeDropped    = false
+    setupTool(tool)
+    return tool
+end
+
+local function getBackpack()
+    return player:FindFirstChildOfClass("Backpack")
+end
+local function getStarterGear()
+    return player:FindFirstChildOfClass("StarterGear")
+end
+
+-- Remove cópias antigas
+local function removerDuplicatas()
+    local backpack = getBackpack()
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item.Name == "Emotes" then item:Destroy() end
+        end
+    end
+    local sg = getStarterGear()
+    if sg then
+        for _, item in ipairs(sg:GetChildren()) do
+            if item.Name == "Emotes" then item:Destroy() end
+        end
+    end
+    local char = player.Character
+    if char then
+        for _, item in ipairs(char:GetChildren()) do
+            if item.Name == "Emotes" then item:Destroy() end
+        end
+    end
+end
+
+-- Cria a Tool no StarterGear (permanência) e no Backpack (uso imediato)
+local function giveEmotesTool()
+    removerDuplicatas()
+
+    local sg = getStarterGear()
+    if sg then
+        -- Aqui NÃO precisa conectar: ela vai ser clonada e o clone
+        -- será capturado pelo watchBackpack quando entrar na mochila.
+        local t = Instance.new("Tool")
+        t.Name = "Emotes"
+        t.RequiresHandle = false
+        t.CanBeDropped    = false
+        t.Parent = sg
+    end
+
+    local backpack = getBackpack()
+    if backpack then
+        local t = createEmotesTool()
+        t.Parent = backpack
+    end
+end
+
+-- ⭐ CORAÇÃO DA CORREÇÃO:
+-- Captura QUALQUER Tool "Emotes" que apareça na mochila,
+-- incluindo os clones gerados pelo StarterGear após morrer.
+local function watchBackpack()
+    local backpack = getBackpack()
+    if not backpack then return end
+    backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") and child.Name == "Emotes" then
+            setupTool(child)
+        end
+    end)
+end
+
+-- Execução inicial
+giveEmotesTool()
+watchBackpack()
+
+-- Respawn: só garante que exista e reconecta
+player.CharacterAdded:Connect(function(_character)
+    menuAberto = false
+    task.wait(0.3)
+
+    local backpack = getBackpack()
+    if not backpack then return end
+
+    local tool = backpack:FindFirstChild("Emotes")
+    if tool then
+        setupTool(tool) -- reconecta o clone que veio do StarterGear
+    else
+        local t = createEmotesTool()
+        t.Parent = backpack
+    end
+end)
+
+print("✅ Item 'Emotes' PERMANENTE — funciona mesmo após morrer!")
